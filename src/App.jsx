@@ -1,6 +1,7 @@
 import React, { useState, useRef } from 'react';
 import DocumentPage from './DocumentPage';
-import AccountPage from './AccountPage';
+import uploadDocPng from './uploadDoc.png';
+import { features } from './features';
 
 export default function App() {
   const [uploadedFile, setUploadedFile] = useState(null);
@@ -8,7 +9,7 @@ export default function App() {
   const [summary, setSummary] = useState('');
   const [formFields, setFormFields] = useState([]);
   const [isProcessing, setIsProcessing] = useState(false);
-  const [view, setView] = useState('home'); // 'home' | 'viewer' | 'account'
+  const [view, setView] = useState('home'); // 'home' | 'viewer' 
 
   const fileInputRef = useRef(null);
 
@@ -63,34 +64,9 @@ export default function App() {
     );
   }
 
-  if (view === 'account') {
-    return <AccountPage onNavigate={setView} />;
-  }
 
   return (
     <div className="min-h-screen bg-white">
-      {/* Navigation Bar */}
-      <nav className="shadow-md" style={{ backgroundColor: '#238AFF' }}>
-        <div className="max-w-5xl mx-auto flex items-center justify-between px-8 py-4">
-          <button
-            onClick={() => setView('home')}
-            className="text-2xl font-bold text-slate-900 hover:text-black text-white"
-          >
-            BureauBuddy
-          </button>
-          <ul className="flex gap-8 items-center">
-            <li>
-              <button
-                onClick={() => setView('account')}
-                className="text-slate-700 hover:text-black font-medium text-white"
-              >
-                Account
-              </button>
-            </li>
-          </ul>
-        </div>
-      </nav>
-
       {/* hidden file input used by hero button */}
       <input
         ref={fileInputRef}
@@ -101,26 +77,64 @@ export default function App() {
       />
 
       {/* Hero Section */}
-      <section className="bg-blue-300 min-h-[70vh] flex items-center">
-        <div className="max-w-5xl mx-auto flex items-center justify-between px-8 w-full">
+      <section className="relative min-h-[70vh] flex items-center overflow-hidden
+        bg-gradient-to-br from-blue-200 via-blue-300 to-indigo-200">
+
+        {/* Subtle grain / noise */}
+        <div className="pointer-events-none absolute inset-0
+          bg-[radial-gradient(circle_at_1px_1px,rgba(0,0,0,0.15)_1px,transparent_0)]
+          bg-[size:16px_16px] opacity-10" />
+
+        {/* Soft abstract shape */}
+        <div className="pointer-events-none absolute -top-40 -left-40
+          w-[520px] h-[520px] rounded-full
+          bg-white/30 blur-3xl" />
+
+        <div className="relative max-w-5xl mx-auto flex items-center justify-between px-8 w-full">
           <h1 className="text-[5.5rem] md:text-[9rem] font-extrabold leading-none text-slate-900">
             Bureau<br />Buddy
           </h1>
 
           <button
             onClick={() => fileInputRef.current?.click()}
-            className="bg-neutral-800 text-white text-xl px-8 md:px-10 py-5 md:py-6 rounded-lg shadow-lg"
+            className="p-0 bg-transparent border-none shadow-none hover:scale-[1.02] transition-transform"
+            style={{ width: 'auto', height: 'auto' }}
           >
-            Upload Document
+            <img
+              src={uploadDocPng}
+              alt="Upload Document"
+              style={{ width: 300, height: 300, objectFit: 'contain', display: 'block' }}
+            />
           </button>
+
         </div>
       </section>
+
 
       {/* Description Section */}
       <section className="flex justify-center items-center py-20 px-8">
         <p className="max-w-3xl text-center text-xl text-slate-800 leading-relaxed">
           Need help understanding complex government forms and legal documents? We’ve got you covered! Upload your form to our agent and we will help you understand the exact process you need to complete this task!
         </p>
+      </section>
+      {/* Features Section */}
+      <section className="py-20 px-4 bg-gradient-to-br from-indigo-50 to-blue-100">
+        <h2 className="text-4xl font-extrabold text-center text-slate-900 mb-12">Features</h2>
+        <div className="max-w-6xl mx-auto grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-10">
+          {features.map(({ icon: Icon, title, description }, idx) => (
+            <div
+              key={title}
+              className="bg-white rounded-2xl shadow-lg p-8 flex flex-col items-center text-center hover:scale-105 transition-transform duration-300 animate-bounce-in"
+              style={{ animationDelay: `${idx * 0.1}s` }}
+            >
+              <span className="mb-4 text-indigo-500">
+                <Icon size={56} />
+              </span>
+              <h3 className="text-2xl font-bold mb-2">{title}</h3>
+              <p className="text-slate-600 text-lg">{description}</p>
+            </div>
+          ))}
+        </div>
       </section>
     </div>
   );
