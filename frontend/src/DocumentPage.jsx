@@ -1,12 +1,16 @@
 import React, { useState, useRef } from "react";
 
 export default function DocumentPage({ fileURL, summary, formFields = [], onBack }) {
+  const [simplifying, setSimplifying] = useState(false);
   const [showAudioDropdown, setShowAudioDropdown] = useState(false);
   const [showLangDropdown, setShowLangDropdown] = useState(false);
   const [translating, setTranslating] = useState(false);
   const [translatedSummary, setTranslatedSummary] = useState(null);
   const [translatedFields, setTranslatedFields] = useState(null);
   const [audioPlaying, setAudioPlaying] = useState(false);
+  const [textInput, setTextInput] = useState("");
+  const [simplifiedText, setSimplifiedText] = useState("");
+  const [translatedSimplified, setTranslatedSimplified] = useState("");
   const audioRef = useRef(null);
 
   const LANGUAGES = [
@@ -97,38 +101,95 @@ export default function DocumentPage({ fileURL, summary, formFields = [], onBack
   };
 
   const handleTranslate = async (langCode) => {
-    setShowLangDropdown(false);
-    if (langCode === "en") {
-      setTranslatedSummary(null);
-      setTranslatedFields(null);
-      return;
+  setShowLangDropdown(false);
+
+  // Reset to English
+  if (langCode === "en") {
+    setTranslatedSummary(null);
+    setTranslatedFields(null);
+    setTranslatedSimplified("");
+    return;
+  }
+
+  setTranslating(true);
+
+  try {
+    // --- Summary ---
+    const summaryPromise = fetch("http://localhost:8000/translate", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text: summary, target_language: langCode }),
+    }).then(res => res.json());
+
+    // --- Fields ---
+    const joinedFields = formFields.map(f => f.label).join("\n");
+    const fieldsPromise = fetch("http://localhost:8000/translate", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text: joinedFields, target_language: langCode }),
+    }).then(res => res.json());
+
+    // --- Simplified text (only if it exists) ---
+    const simplifiedPromise = simplifiedText
+      ? fetch("http://localhost:8000/translate", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ text: simplifiedText, target_language: langCode }),
+        }).then(res => res.json())
+      : Promise.resolve(null);
+
+    const [summaryData, fieldsData, simplifiedData] = await Promise.all([
+      summaryPromise,
+      fieldsPromise,
+      simplifiedPromise,
+    ]);
+
+    setTranslatedSummary(summaryData.translated_text || summary);
+
+    const translatedLabels = (fieldsData.translated_text || joinedFields).split("\n");
+    setTranslatedFields(
+      formFields.map((field, i) => ({
+        ...field,
+        label: translatedLabels[i] || field.label,
+      }))
+    );
+
+    if (simplifiedData?.translated_text) {
+      setTranslatedSimplified(simplifiedData.translated_text);
+    } else {
+      setTranslatedSimplified("");
     }
-    setTranslating(true);
+
+  } catch (err) {
+    console.error(err);
+    setTranslatedSummary("Translation failed.");
+    setTranslatedFields(formFields);
+    setTranslatedSimplified("");
+  } finally {
+    setTranslating(false);
+  }
+};
+
+
+  const handleSimplifySubmit = async () => {
+    if (!textInput.trim()) return;
+    setSimplifying(true);
     try {
-      // Translate summary
-      const res1 = await fetch("http://localhost:8000/translate", {
+      const res = await fetch("http://localhost:8000/simplify", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text: summary, target_language: langCode })
+        body: JSON.stringify({
+          selected_text: textInput,
+          document_context: textInput // fallback, or use summary if needed
+        }),
       });
-      const data1 = await res1.json();
-      // Translate requirements (join as one string, split after)
-      const joined = formFields.map(f => f.label).join("\n");
-      const res2 = await fetch("http://localhost:8000/translate", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text: joined, target_language: langCode })
-      });
-      const data2 = await res2.json();
-      setTranslatedSummary(data1.translated_text || summary);
-      setTranslatedFields(
-        (data2.translated_text || joined).split("\n").map((label, i) => ({ id: i + 1, label }))
-      );
+      const data = await res.json();
+      setSimplifiedText(data.explanation);
+      setTextInput("");
     } catch (err) {
-      setTranslatedSummary("Translation failed.");
-      setTranslatedFields(formFields);
+      setSimplifiedText("Simplification failed.");
     } finally {
-      setTranslating(false);
+      setSimplifying(false);
     }
   };
 
@@ -174,10 +235,21 @@ export default function DocumentPage({ fileURL, summary, formFields = [], onBack
             </ul>
           </div>
 
+          {/* Show simplified/translated text as heading below steps to take */}
+          {(simplifiedText || translatedSimplified) && (
+            <div className="mt-8">
+              <h4 className="text-lg font-semibold mb-2">Simplified Text</h4>
+              <div className="text-base text-slate-700 whitespace-pre-line">
+                {translatedSimplified || simplifiedText}
+              </div>
+            </div>
+          )}
+
+
         </div>
 
         {/* Bottom buttons */}
-        <div className="mt-6 flex gap-3 relative">
+        <div className="mt-6 flex gap-3 relative justify-between items-center">
           <button
             className="w-16 h-16 text-3xl bg-slate-100 rounded-md grid place-items-center"
             onClick={handleAudioButton}
@@ -186,6 +258,36 @@ export default function DocumentPage({ fileURL, summary, formFields = [], onBack
           >
             {audioPlaying ? "⏹" : "🔊"}
           </button>
+
+            <div className="relative w-72">
+              {simplifying && (
+                <div className="mb-1 text-xs text-blue-600 font-semibold text-center">Processing...</div>
+              )}
+              <textarea
+                placeholder="Paste text here for clarification"
+                className="border border-slate-300 rounded px-2 py-1 w-full h-20 text-base resize-none pr-8"
+                style={{ height: "5rem" }}
+                value={textInput}
+                onChange={e => setTextInput(e.target.value)}
+                onKeyDown={e => {
+                  if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    handleSimplifySubmit();
+                  }
+                }}
+                disabled={simplifying}
+              />
+
+              <button
+                className="absolute bottom-3 right-2 w-6 h-6 bg-slate-200 hover:bg-slate-300 rounded-full flex items-center justify-center text-slate-700 text-sm"
+                aria-label="Submit"
+                onClick={handleSimplifySubmit}
+              >
+                ↑
+              </button>
+              {/* No simplified/translated text here; moved below steps to take */}
+            </div>
+
           <button className="w-16 h-16 text-xl bg-slate-100 rounded-md grid place-items-center" onClick={() => setShowLangDropdown((prev) => !prev)}>
             🌐
           </button>
