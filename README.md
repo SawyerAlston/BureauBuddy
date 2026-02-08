@@ -1,6 +1,8 @@
-# BureauBuddy
+<p align="center">
+  <img src="frontend/src/BBlogo.png" alt="Placeholder" width="300"/>
+</p> 
 
-*A TidalHACK '26 Creation*
+> **A TidalHACK '26 Creation 🛠**
 
 **BureauBuddy** is a document‑processing application for government and legal forms. It provides PDF ingestion, structured analysis, translation, text‑to‑speech synthesis, and actionable next‑step guidance through a FastAPI backend and React frontend.
 
