@@ -1,5 +1,5 @@
 from typing import Optional, Union, List
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, UploadFile, File
 from pydantic import BaseModel, Field
 from utils import (_get_client, _safe_json_parse, _strip_data_url, DocumentAnalysis, extract_text_from_pdf_bytes)
 import base64
@@ -107,6 +107,34 @@ def analyze_document_endpoint(payload: AnalyzeRequest) -> AnalyzeResponse:
             is_image=payload.is_image,
             mime_type=payload.mime_type,
             model=payload.model,
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+    return AnalyzeResponse(
+        purpose=result.purpose,
+        summary=result.summary,
+        transcribed_text=result.transcribed_text,
+        requirements=result.requirements,
+    )
+
+
+@router.post("/upload", response_model=AnalyzeResponse)
+async def analyze_document_upload(
+    file: UploadFile = File(...),
+    model: Optional[str] = None,
+) -> AnalyzeResponse:
+    if not file.content_type:
+        raise HTTPException(status_code=400, detail="Missing content type")
+
+    pdf_bytes = await file.read()
+
+    try:
+        result = analyze_document(
+            file_content=pdf_bytes,
+            is_image=file.content_type.startswith("image/"),
+            mime_type=file.content_type,
+            model=model,
         )
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
