@@ -199,6 +199,7 @@ export default function App() {
         <p className="max-w-3xl text-center text-xl text-slate-800 leading-relaxed">
           Need help understanding complex government forms and legal documents? We’ve got you covered! Upload your form to our agent and we will help you understand the exact process you need to complete this task!
         </p>
+        <div className="w-40 h-1 rounded-full bg-gradient-to-r from-blue-400 via-indigo-400 to-blue-300" />
       </section>
       {/* Features Section */}
       <section className="py-20 px-4 bg-gradient-to-br from-indigo-50 to-blue-100">
