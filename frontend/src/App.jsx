@@ -7,6 +7,7 @@ export default function App() {
   const [uploadedFile, setUploadedFile] = useState(null);
   const [fileURL, setFileURL] = useState(null);
   const [summary, setSummary] = useState('');
+  const [importantInfo, setImportantInfo] = useState(null);
   const [formFields, setFormFields] = useState([]);
   const [isProcessing, setIsProcessing] = useState(false);
   const [view, setView] = useState('home'); // 'home' | 'viewer' 
@@ -35,10 +36,33 @@ export default function App() {
     setFormFields(
       (data.requirements || []).map((req, idx) => ({ id: idx + 1, label: req }))
     );
+
+    const contextText = (data.transcribed_text || data.summary || "").trim();
+    if (contextText) {
+      try {
+        const infoResponse = await fetch("http://localhost:8000/important_info", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ document_context: contextText }),
+        });
+        if (infoResponse.ok) {
+          const infoData = await infoResponse.json();
+          setImportantInfo(infoData);
+        } else {
+          setImportantInfo(null);
+        }
+      } catch (err) {
+        console.error(err);
+        setImportantInfo(null);
+      }
+    } else {
+      setImportantInfo(null);
+    }
   } catch (err) {
     console.error(err);
     setSummary("Error analyzing document.");
     setFormFields([]);
+    setImportantInfo(null);
   } finally {
     setIsProcessing(false);
     setView("viewer");
@@ -59,6 +83,7 @@ export default function App() {
     setView('home');
     setSummary('');
     setFormFields([]);
+    setImportantInfo(null);
     setUploadedFile(null);
     if (fileURL) URL.revokeObjectURL(fileURL);
     setFileURL(null);
@@ -85,6 +110,7 @@ export default function App() {
         fileName={uploadedFile}
         fileURL={fileURL}
         summary={summary}
+        importantInfo={importantInfo}
         formFields={formFields}
         onBack={handleBack}
       />

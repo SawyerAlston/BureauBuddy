@@ -1,6 +1,12 @@
 import React, { useState, useRef, useEffect } from "react";
 
-export default function DocumentPage({ fileURL, summary, formFields = [], onBack }) {
+export default function DocumentPage({
+  fileURL,
+  summary,
+  importantInfo,
+  formFields = [],
+  onBack,
+}) {
   const [showAudioDropdown, setShowAudioDropdown] = useState(false);
   const [showLangDropdown, setShowLangDropdown] = useState(false);
   const [translating, setTranslating] = useState(false);
@@ -26,6 +32,11 @@ export default function DocumentPage({ fileURL, summary, formFields = [], onBack
   const [selectionDraft, setSelectionDraft] = useState("");
   const [selectionDraftLoading, setSelectionDraftLoading] = useState(false);
   const [selectionDraftError, setSelectionDraftError] = useState("");
+  const [showImportantInfo, setShowImportantInfo] = useState(false);
+  const [chatMessages, setChatMessages] = useState([]);
+  const [chatInput, setChatInput] = useState("");
+  const [chatLoading, setChatLoading] = useState(false);
+  const [chatError, setChatError] = useState("");
   const audioRef = useRef(null);
   const captureVideoRef = useRef(null);
   const captureStreamRef = useRef(null);
@@ -366,6 +377,65 @@ export default function DocumentPage({ fileURL, summary, formFields = [], onBack
     }
   };
 
+  const buildDocumentContext = () => {
+    const parts = [];
+    if (summary) parts.push(`Summary: ${summary}`);
+    if (formFields?.length) {
+      parts.push(`Requirements: ${formFields.map((f) => f.label).join("; ")}`);
+    }
+    if (importantInfo) {
+      if (importantInfo.deadlines?.length) {
+        parts.push(`Deadlines: ${importantInfo.deadlines.join("; ")}`);
+      }
+      if (importantInfo.notices?.length) {
+        parts.push(`Notices: ${importantInfo.notices.join("; ")}`);
+      }
+      if (importantInfo.rules?.length) {
+        parts.push(`Rules: ${importantInfo.rules.join("; ")}`);
+      }
+      if (importantInfo.other?.length) {
+        parts.push(`Other: ${importantInfo.other.join("; ")}`);
+      }
+    }
+    return parts.join("\n");
+  };
+
+  const handleChatSend = async () => {
+    const question = chatInput.trim();
+    if (!question) return;
+    const documentContext = buildDocumentContext();
+    if (!documentContext) {
+      setChatError("Document context is not available yet.");
+      return;
+    }
+    setChatError("");
+    setChatLoading(true);
+    setChatInput("");
+    setChatMessages((prev) => [...prev, { role: "user", content: question }]);
+    try {
+      const response = await fetch("http://localhost:8000/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          question,
+          document_context: documentContext,
+        }),
+      });
+      if (!response.ok) {
+        const errText = await response.text();
+        throw new Error(errText);
+      }
+      const data = await response.json();
+      const answer = data.answer || "No answer returned.";
+      setChatMessages((prev) => [...prev, { role: "assistant", content: answer }]);
+    } catch (err) {
+      console.error(err);
+      setChatError("Failed to get an answer.");
+    } finally {
+      setChatLoading(false);
+    }
+  };
+
   const generateSelectionActions = async () => {
     const baseExplanation = (selectionTranslated || selectionExplanation || "").trim();
     if (!baseExplanation) {
@@ -544,10 +614,69 @@ export default function DocumentPage({ fileURL, summary, formFields = [], onBack
             </ul>
           </div>
 
+          {importantInfo ? (
+            <div className="mt-8">
+              <button
+                onClick={() => setShowImportantInfo((prev) => !prev)}
+                className="w-full flex items-center justify-between text-left text-lg font-semibold text-slate-900"
+                aria-expanded={showImportantInfo}
+              >
+                <span>Important Info</span>
+                <span className="text-sm text-slate-500">
+                  {showImportantInfo ? "Hide" : "Show"}
+                </span>
+              </button>
+              {showImportantInfo ? (
+                <div className="mt-3">
+                  {importantInfo.deadlines?.length ? (
+                    <div className="mb-3">
+                      <div className="text-sm font-semibold text-slate-700 mb-1">Deadlines</div>
+                      <ul className="list-disc list-inside space-y-1 text-slate-800">
+                        {importantInfo.deadlines.map((item, idx) => (
+                          <li key={`deadline-${idx}`}>{item}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  ) : null}
+                  {importantInfo.notices?.length ? (
+                    <div className="mb-3">
+                      <div className="text-sm font-semibold text-slate-700 mb-1">Notices</div>
+                      <ul className="list-disc list-inside space-y-1 text-slate-800">
+                        {importantInfo.notices.map((item, idx) => (
+                          <li key={`notice-${idx}`}>{item}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  ) : null}
+                  {importantInfo.rules?.length ? (
+                    <div className="mb-3">
+                      <div className="text-sm font-semibold text-slate-700 mb-1">Rules</div>
+                      <ul className="list-disc list-inside space-y-1 text-slate-800">
+                        {importantInfo.rules.map((item, idx) => (
+                          <li key={`rule-${idx}`}>{item}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  ) : null}
+                  {importantInfo.other?.length ? (
+                    <div>
+                      <div className="text-sm font-semibold text-slate-700 mb-1">Other</div>
+                      <ul className="list-disc list-inside space-y-1 text-slate-800">
+                        {importantInfo.other.map((item, idx) => (
+                          <li key={`other-${idx}`}>{item}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
+            </div>
+          ) : null}
+
           <div className="mt-8">
             <h4 className="text-lg font-semibold mb-2">Explain a Selection</h4>
             <p className="text-sm text-slate-500 mb-3">
-              Click Select Area, then drag a rectangle over the PDF.
+              Click Select Text, then drag a rectangle over the PDF.
             </p>
             <div className="flex items-center gap-2">
               <button
@@ -555,7 +684,7 @@ export default function DocumentPage({ fileURL, summary, formFields = [], onBack
                 disabled={!fileURL || isCapturing || selectionLoading}
                 className="px-3 py-1.5 text-sm rounded-md bg-slate-900 text-white disabled:opacity-50"
               >
-                {isCapturing ? "Selecting..." : "Select Area"}
+                {isCapturing ? "Selecting..." : "Select Text"}
               </button>
               <button
                 onClick={stopScreenCapture}
@@ -629,6 +758,66 @@ export default function DocumentPage({ fileURL, summary, formFields = [], onBack
                   ))}
                 </ul>
               </div>
+            ) : null}
+          </div>
+
+          <div className="mt-10">
+            <h4 className="text-lg font-semibold mb-2">Ask an Expert</h4>
+            <p className="text-sm text-slate-500 mb-3">
+              Ask questions about the document and get an expert response.
+            </p>
+            <div className="border border-slate-200 rounded-md bg-white">
+              <div className="max-h-48 overflow-auto p-3 space-y-3">
+                {chatMessages.length === 0 ? (
+                  <div className="text-sm text-slate-500">
+                    No messages yet. Ask a question below.
+                  </div>
+                ) : null}
+                {chatMessages.map((msg, idx) => (
+                  <div
+                    key={`${msg.role}-${idx}`}
+                    className={
+                      msg.role === "user"
+                        ? "text-sm text-slate-900 text-right"
+                        : "text-sm text-slate-700 text-left"
+                    }
+                  >
+                    <div
+                      className={
+                        msg.role === "user"
+                          ? "inline-block bg-slate-100 px-3 py-2 rounded-lg"
+                          : "inline-block bg-blue-50 px-3 py-2 rounded-lg"
+                      }
+                    >
+                      {msg.content}
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <div className="border-t border-slate-200 p-3 flex gap-2">
+                <input
+                  value={chatInput}
+                  onChange={(e) => setChatInput(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && !e.shiftKey) {
+                      e.preventDefault();
+                      handleChatSend();
+                    }
+                  }}
+                  placeholder="Ask a question..."
+                  className="flex-1 border border-slate-200 rounded-md px-3 py-2 text-sm"
+                />
+                <button
+                  onClick={handleChatSend}
+                  disabled={chatLoading || !chatInput.trim()}
+                  className="px-3 py-2 text-sm rounded-md bg-slate-900 text-white disabled:opacity-50"
+                >
+                  {chatLoading ? "Sending..." : "Send"}
+                </button>
+              </div>
+            </div>
+            {chatError ? (
+              <div className="mt-2 text-sm text-red-600">{chatError}</div>
             ) : null}
           </div>
 
