@@ -6,6 +6,10 @@ export default function DocumentPage({ fileURL, summary, formFields = [], onBack
   const [translating, setTranslating] = useState(false);
   const [translatedSummary, setTranslatedSummary] = useState(null);
   const [translatedFields, setTranslatedFields] = useState(null);
+  const [summaryLang, setSummaryLang] = useState("en");
+  const [summaryDraft, setSummaryDraft] = useState("");
+  const [summaryDraftLoading, setSummaryDraftLoading] = useState(false);
+  const [summaryDraftError, setSummaryDraftError] = useState("");
   const [audioPlaying, setAudioPlaying] = useState(false);
   const [isCapturing, setIsCapturing] = useState(false);
   const [captureRect, setCaptureRect] = useState(null);
@@ -19,6 +23,9 @@ export default function DocumentPage({ fileURL, summary, formFields = [], onBack
   const [selectionActions, setSelectionActions] = useState([]);
   const [selectionActionsLoading, setSelectionActionsLoading] = useState(false);
   const [selectionActionsError, setSelectionActionsError] = useState("");
+  const [selectionDraft, setSelectionDraft] = useState("");
+  const [selectionDraftLoading, setSelectionDraftLoading] = useState(false);
+  const [selectionDraftError, setSelectionDraftError] = useState("");
   const audioRef = useRef(null);
   const captureVideoRef = useRef(null);
   const captureStreamRef = useRef(null);
@@ -117,9 +124,12 @@ export default function DocumentPage({ fileURL, summary, formFields = [], onBack
 
   const handleTranslate = async (langCode) => {
     setShowLangDropdown(false);
+    setSummaryLang(langCode);
     if (langCode === "en") {
       setTranslatedSummary(null);
       setTranslatedFields(null);
+      setSummaryDraft("");
+      setSummaryDraftError("");
       return;
     }
     setTranslating(true);
@@ -143,6 +153,8 @@ export default function DocumentPage({ fileURL, summary, formFields = [], onBack
       setTranslatedFields(
         (data2.translated_text || joined).split("\n").map((label, i) => ({ id: i + 1, label }))
       );
+      setSummaryDraft("");
+      setSummaryDraftError("");
     } catch (err) {
       setTranslatedSummary("Translation failed.");
       setTranslatedFields(formFields);
@@ -157,6 +169,8 @@ export default function DocumentPage({ fileURL, summary, formFields = [], onBack
       setSelectionTranslated("");
       setSelectionActions([]);
       setSelectionActionsError("");
+      setSelectionDraft("");
+      setSelectionDraftError("");
       return;
     }
     if (!selectionExplanation) return;
@@ -172,6 +186,8 @@ export default function DocumentPage({ fileURL, summary, formFields = [], onBack
       setSelectionTranslated(translated);
       setSelectionActions([]);
       setSelectionActionsError("");
+      setSelectionDraft("");
+      setSelectionDraftError("");
     } catch (err) {
       console.error(err);
       setSelectionTranslated("Translation failed.");
@@ -197,6 +213,8 @@ export default function DocumentPage({ fileURL, summary, formFields = [], onBack
     setSelectionTranslated("");
     setSelectionActions([]);
     setSelectionActionsError("");
+    setSelectionDraft("");
+    setSelectionDraftError("");
     try {
       const stream = await navigator.mediaDevices.getDisplayMedia({ video: true });
       const video = captureVideoRef.current;
@@ -294,6 +312,60 @@ export default function DocumentPage({ fileURL, summary, formFields = [], onBack
     }
   };
 
+  const getLanguageLabel = (code) => {
+    const match = LANGUAGES.find((lang) => lang.code === code);
+    return match ? match.label : code;
+  };
+
+  const getDraftConfig = (text) => {
+    const haystack = (text || "").toLowerCase();
+    if (haystack.includes("notice to vacate")) {
+      return { label: "Draft Response", docType: "Notice to Vacate" };
+    }
+    if (haystack.includes("denial of benefits") || haystack.includes("benefits denial")) {
+      return { label: "Draft Appeal Letter", docType: "Denial of Benefits" };
+    }
+    return { label: "Draft Response", docType: "General Document" };
+  };
+
+  const generateSummaryDraft = async () => {
+    const baseText = (translatedSummary || summary || "").trim();
+    const draftConfig = getDraftConfig(baseText);
+    if (!draftConfig) {
+      setSummaryDraftError("No draft template available for this document.");
+      return;
+    }
+    if (!baseText) {
+      setSummaryDraftError("No simplified text available yet.");
+      return;
+    }
+    setSummaryDraftLoading(true);
+    setSummaryDraftError("");
+    setSummaryDraft("");
+    try {
+      const response = await fetch("http://localhost:8000/draft_response", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          document_type: draftConfig.docType,
+          document_context: baseText,
+          language: getLanguageLabel(summaryLang),
+        }),
+      });
+      if (!response.ok) {
+        const errText = await response.text();
+        throw new Error(errText);
+      }
+      const data = await response.json();
+      setSummaryDraft(data.draft || "No draft returned.");
+    } catch (err) {
+      console.error(err);
+      setSummaryDraftError("Failed to draft a response.");
+    } finally {
+      setSummaryDraftLoading(false);
+    }
+  };
+
   const generateSelectionActions = async () => {
     const baseExplanation = (selectionTranslated || selectionExplanation || "").trim();
     if (!baseExplanation) {
@@ -383,6 +455,8 @@ export default function DocumentPage({ fileURL, summary, formFields = [], onBack
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [isCapturing]);
 
+  const summaryDraftConfig = getDraftConfig(translatedSummary || summary);
+
   return (
     <div className="h-screen bg-white grid grid-cols-1 lg:grid-cols-3 overflow-hidden">
       {isCapturing ? (
@@ -440,6 +514,26 @@ export default function DocumentPage({ fileURL, summary, formFields = [], onBack
               {translating ? "Translating..." : (translatedSummary || summary)}
             </blockquote>
           </div>
+          <div className="mt-4 flex flex-wrap items-center gap-2">
+            <button
+              onClick={generateSummaryDraft}
+              disabled={summaryDraftLoading}
+              className="px-3 py-1.5 text-sm rounded-md bg-white border border-slate-200 text-slate-700 disabled:opacity-50"
+            >
+              {summaryDraftLoading ? "Drafting..." : summaryDraftConfig.label}
+            </button>
+          </div>
+          {summaryDraftError ? (
+            <div className="mt-2 text-sm text-red-600">{summaryDraftError}</div>
+          ) : null}
+          {summaryDraft ? (
+            <div className="mt-3 text-slate-700 text-base">
+              <div className="text-sm font-semibold text-slate-700 mb-1">Draft</div>
+              <blockquote className="border-l-4 border-slate-200 pl-4 italic whitespace-pre-wrap">
+                {summaryDraft}
+              </blockquote>
+            </div>
+          ) : null}
 
           <div className="mt-8">
             <h4 className="text-lg font-semibold mb-3">Steps to Take</h4>
