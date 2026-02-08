@@ -1,7 +1,7 @@
 from typing import Optional, List
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
-from utils import _get_client, _safe_json_parse, SimplifyResult
+from app.utils import _get_client, _safe_json_parse, SimplifyResult
 
 
 router = APIRouter(prefix="/simplify", tags=["Simplify"])
@@ -10,7 +10,6 @@ router = APIRouter(prefix="/simplify", tags=["Simplify"])
 class SimplifyRequest(BaseModel):
     selected_text: str = Field(..., min_length=1)
     document_context: str = Field(..., min_length=1)
-    model: Optional[str] = None
 
 
 class SimplifyResponse(BaseModel):
@@ -20,7 +19,6 @@ class SimplifyResponse(BaseModel):
 def simplify_text(
     selected_text: str,
     document_context: str,
-    model: Optional[str] = "gemini-1.5-flash",
 ) -> SimplifyResult:
     prompt = (
         "The user is reading a bureaucratic document and is confused by this specific text: "
@@ -34,10 +32,10 @@ def simplify_text(
     )
 
     client = _get_client()
-    selected_model = model or "gemini-1.5-flash"
+    selected_model = "gemini-2.5-flash-lite"
 
     response = client.models.generate_content(
-        model=selected_model,
+        model="gemini-2.5-flash-lite",
         contents=prompt,
         config={"response_mime_type": "application/json"},
     )
@@ -55,7 +53,6 @@ def simplify_text_endpoint(payload: SimplifyRequest) -> SimplifyResponse:
         result = simplify_text(
             selected_text=payload.selected_text,
             document_context=payload.document_context,
-            model=payload.model,
         )
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc

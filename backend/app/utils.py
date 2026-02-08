@@ -3,23 +3,38 @@ from dotenv import load_dotenv
 import json
 import os
 import re
-from typing import Any, Dict
-from google import genai
-from typing import List, Optional
+from typing import Any, Dict, List, Optional, TYPE_CHECKING
 from dataclasses import dataclass
 from io import BytesIO
 from typing import Iterable
-from pypdf import PdfReader
+try:
+    from pypdf import PdfReader
+except Exception:  # pragma: no cover - runtime guard
+    PdfReader = None
+
+if TYPE_CHECKING:
+    from google import genai
 
 
 
 load_dotenv()
 
-def _get_client() -> genai.Client:
+def _get_client() -> "genai.Client":
+    try:
+        from google import genai as genai_module
+    except Exception:
+        try:
+            import google.genai as genai_module
+        except Exception as exc:  # pragma: no cover - runtime guard
+            raise ImportError(
+                "google-genai is not available in the active interpreter. "
+                "Install it in the same environment running the app."
+            ) from exc
+
     api_key = os.getenv("GEMINI_API_KEY")
     if not api_key:
         raise ValueError("Missing GEMINI_API_KEY environment variable.")
-    return genai.Client(api_key=api_key)
+    return genai_module.Client(api_key=api_key)
 
 def _safe_json_parse(text: str) -> Dict[str, Any]:
     try:
@@ -65,6 +80,11 @@ class SimplifyResult:
         )
 
 def extract_text_from_pdf_bytes(data: bytes) -> str:
+    if PdfReader is None:
+        raise ImportError(
+            "pypdf is not available in the active interpreter. "
+            "Install it in the same environment running the app."
+        )
     reader = PdfReader(BytesIO(data))
     full_text_parts: list[str] = []
 

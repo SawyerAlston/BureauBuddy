@@ -1,7 +1,7 @@
 from typing import Optional, Union, List
 from fastapi import APIRouter, HTTPException, UploadFile, File
 from pydantic import BaseModel, Field
-from utils import (_get_client, _safe_json_parse, _strip_data_url, DocumentAnalysis, extract_text_from_pdf_bytes)
+from app.utils import (_get_client, _safe_json_parse, _strip_data_url, DocumentAnalysis, extract_text_from_pdf_bytes)
 import base64
 
 
@@ -12,7 +12,6 @@ class AnalyzeRequest(BaseModel):
     file_content: str = Field(..., min_length=1)
     is_image: bool = False
     mime_type: str = "text/plain"
-    model: Optional[str] = None
     is_base64: bool = False
 
 
@@ -45,7 +44,7 @@ def analyze_document(
     )
 
     client = _get_client()
-    selected_model = model or "gemini-2.5-flash-lite"
+    selected_model = "gemini-2.5-flash-lite"
 
     content_text: Optional[str] = None
 
@@ -106,7 +105,7 @@ def analyze_document_endpoint(payload: AnalyzeRequest) -> AnalyzeResponse:
             file_content=content,
             is_image=payload.is_image,
             mime_type=payload.mime_type,
-            model=payload.model,
+            model="gemini-2.5-flash-lite",
         )
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
@@ -122,7 +121,7 @@ def analyze_document_endpoint(payload: AnalyzeRequest) -> AnalyzeResponse:
 @router.post("/upload", response_model=AnalyzeResponse)
 async def analyze_document_upload(
     file: UploadFile = File(...),
-    model: Optional[str] = None,
+    model: Optional[str] = "gemini-2.5-flash-lite",
 ) -> AnalyzeResponse:
     if not file.content_type:
         raise HTTPException(status_code=400, detail="Missing content type")
