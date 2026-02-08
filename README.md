@@ -32,6 +32,7 @@ Create and activate a virtual environment, then install backend dependencies:
 ```bash
 python -m venv venv
 source venv/bin/activate
+cd backend
 pip install -r requirements.txt
 ```
 
