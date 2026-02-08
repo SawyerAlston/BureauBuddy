@@ -136,7 +136,22 @@ async def analyze_document_upload(
             model=model,
         )
     except Exception as exc:
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
+        print(f"Exception in analyze_document_upload: {exc}")
+        # Custom error handling for Gemini API errors
+        error_message = str(exc)
+        if "Missing GEMINI_API_KEY" in error_message:
+            user_message = "Server configuration error: Gemini API key is missing. Please contact support."
+            status_code = 500
+        elif "model is overloaded" in error_message or "UNAVAILABLE" in error_message:
+            user_message = "Document analysis service is temporarily unavailable due to high demand. Please try again later."
+            status_code = 503
+        elif "Empty response from Gemini" in error_message:
+            user_message = "Document analysis service returned no result. Please try again or contact support."
+            status_code = 502
+        else:
+            user_message = f"An unexpected error occurred: {error_message}"
+            status_code = 500
+        raise HTTPException(status_code=status_code, detail=user_message) from exc
 
     return AnalyzeResponse(
         purpose=result.purpose,

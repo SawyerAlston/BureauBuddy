@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 
-export default function DocumentPage({ fileURL, summary, onBack }) {
+export default function DocumentPage({ fileURL, summary, formFields = [], onBack }) {
   const [showAudioDropdown, setShowAudioDropdown] = useState(false);
 
   const handleAudioSpeed = (speed) => {
@@ -44,11 +44,12 @@ export default function DocumentPage({ fileURL, summary, onBack }) {
           <div className="mt-8">
             <h4 className="text-lg font-semibold mb-3">Requirements</h4>
             <ul className="list-disc list-inside space-y-2 text-slate-800">
-              <li>Passport</li>
-              <li>Birth Certificate</li>
-              <li>Tax forms</li>
+              {formFields.map((field) => (
+                <li key={field.id}>{field.label}</li>
+              ))}
             </ul>
           </div>
+
         </div>
 
         {/* Bottom buttons */}

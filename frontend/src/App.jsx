@@ -13,26 +13,35 @@ export default function App() {
 
   const fileInputRef = useRef(null);
 
-  const processDocument = async (fileName) => {
-    setIsProcessing(true);
+  const processDocument = async (file) => {
+  setIsProcessing(true);
+  try {
+    const formData = new FormData();
+    formData.append("file", file);
 
-    await new Promise((r) => setTimeout(r, 1000));
+    const response = await fetch("http://localhost:8000/analyze_doc/upload", {
+      method: "POST",
+      body: formData, // multipart/form-data is automatically set by browser
+    });
 
-    const mockSummaries = {
-      default:
-        'This document outlines important procedures and requirements that need to be understood and completed. The document contains several sections with specific guidelines and instructions that must be followed carefully. Each section requires attention to detail and proper completion of designated fields to ensure compliance with regulations.',
-    };
+    if (!response.ok) throw new Error("Failed to analyze document");
 
-    setSummary(mockSummaries.default);
+    const data = await response.json();
 
-    setFormFields([
-      { id: 1, label: 'Full Legal Name' },
-      { id: 2, label: 'Date of Birth' },
-    ]);
-
+    setSummary(data.summary || "No summary available.");
+    setFormFields(
+      (data.requirements || []).map((req, idx) => ({ id: idx + 1, label: req }))
+    );
+  } catch (err) {
+    console.error(err);
+    setSummary("Error analyzing document.");
+    setFormFields([]);
+  } finally {
     setIsProcessing(false);
-    setView('viewer');
-  };
+    setView("viewer");
+  }
+};
+
 
   const handleFileChange = (e) => {
     const file = e.target.files?.[0];
@@ -40,7 +49,7 @@ export default function App() {
     setUploadedFile(file.name);
     const url = URL.createObjectURL(file);
     setFileURL(url);
-    processDocument(file.name);
+    processDocument(file);
   };
 
   const handleBack = () => {
@@ -51,6 +60,21 @@ export default function App() {
     if (fileURL) URL.revokeObjectURL(fileURL);
     setFileURL(null);
   };
+
+  if (isProcessing) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center bg-white">
+        <div className="flex flex-col items-center">
+          <svg className="animate-spin h-16 w-16 text-blue-500 mb-6" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
+          </svg>
+          <h2 className="text-2xl font-semibold text-slate-700 mb-2">Uploading and analyzing your document...</h2>
+          <p className="text-slate-500">This may take a few moments. Please wait.</p>
+        </div>
+      </div>
+    );
+  }
 
   if (view === 'viewer') {
     return (
