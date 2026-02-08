@@ -69,6 +69,11 @@ def analyze_document(
         else:
             content_text = file_content
 
+        # Remove control characters except for newlines and tabs
+        if content_text is not None:
+            import re
+            content_text = re.sub(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]", "", content_text)
+
         contents = f"{prompt}\n\nDOCUMENT CONTENT:\n{content_text}"
 
     response = client.models.generate_content(
