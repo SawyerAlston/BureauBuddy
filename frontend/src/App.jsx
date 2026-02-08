@@ -71,13 +71,17 @@ export default function App() {
 
 
   const handleFileChange = (e) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    setUploadedFile(file.name);
-    const url = URL.createObjectURL(file);
-    setFileURL(url);
-    processDocument(file);
-  };
+  const file = e.target.files?.[0];
+  if (!file) return;
+
+  setUploadedFile(file.name);
+  const url = URL.createObjectURL(file);
+  setFileURL(url);
+
+  setView("viewer");        // 👈 show viewer immediately
+  processDocument(file);    // analysis happens in background
+};
+
 
   const handleBack = () => {
     setView('home');
@@ -89,21 +93,6 @@ export default function App() {
     setFileURL(null);
   };
 
-  if (isProcessing) {
-    return (
-      <div className="min-h-screen flex flex-col items-center justify-center bg-white">
-        <div className="flex flex-col items-center">
-          <svg className="animate-spin h-16 w-16 text-blue-500 mb-6" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
-          </svg>
-          <h2 className="text-2xl font-semibold text-slate-700 mb-2">Uploading and analyzing your document...</h2>
-          <p className="text-slate-500">This may take a few moments. Please wait.</p>
-        </div>
-      </div>
-    );
-  }
-
   if (view === 'viewer') {
     return (
       <DocumentPage
@@ -113,6 +102,7 @@ export default function App() {
         importantInfo={importantInfo}
         formFields={formFields}
         onBack={handleBack}
+        isProcessing={isProcessing}
       />
     );
   }

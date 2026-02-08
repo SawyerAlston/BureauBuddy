@@ -6,12 +6,14 @@ export default function DocumentPage({
   importantInfo,
   formFields = [],
   onBack,
+  isProcessing,
 }) {
   const [showAudioDropdown, setShowAudioDropdown] = useState(false);
   const [showLangDropdown, setShowLangDropdown] = useState(false);
   const [translating, setTranslating] = useState(false);
   const [translatedSummary, setTranslatedSummary] = useState(null);
   const [translatedFields, setTranslatedFields] = useState(null);
+  const [translatedImportantInfo, setTranslatedImportantInfo] = useState(null);
   const [summaryLang, setSummaryLang] = useState("en");
   const [summaryDraft, setSummaryDraft] = useState("");
   const [summaryDraftLoading, setSummaryDraftLoading] = useState(false);
@@ -139,6 +141,7 @@ export default function DocumentPage({
     if (langCode === "en") {
       setTranslatedSummary(null);
       setTranslatedFields(null);
+      setTranslatedImportantInfo(null);
       setSummaryDraft("");
       setSummaryDraftError("");
       return;
@@ -160,15 +163,42 @@ export default function DocumentPage({
         body: JSON.stringify({ text: joined, target_language: langCode })
       });
       const data2 = await res2.json();
+
+      // Translate importantInfo fields
+      let translatedInfo = {};
+      if (importantInfo) {
+        const infoFields = [
+          { key: "deadlines", value: importantInfo.deadlines },
+          { key: "notices", value: importantInfo.notices },
+          { key: "rules", value: importantInfo.rules },
+          { key: "other", value: importantInfo.other }
+        ];
+        for (const field of infoFields) {
+          if (field.value && field.value.length) {
+            const joinedField = field.value.join("\n");
+            const res = await fetch("http://localhost:8000/translate", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ text: joinedField, target_language: langCode })
+            });
+            const data = await res.json();
+            translatedInfo[field.key] = (data.translated_text || joinedField).split("\n");
+          } else {
+            translatedInfo[field.key] = [];
+          }
+        }
+      }
       setTranslatedSummary(data1.translated_text || summary);
       setTranslatedFields(
         (data2.translated_text || joined).split("\n").map((label, i) => ({ id: i + 1, label }))
       );
+      setTranslatedImportantInfo(translatedInfo);
       setSummaryDraft("");
       setSummaryDraftError("");
     } catch (err) {
       setTranslatedSummary("Translation failed.");
       setTranslatedFields(formFields);
+      setTranslatedImportantInfo(null);
     } finally {
       setTranslating(false);
     }
@@ -401,24 +431,20 @@ export default function DocumentPage({
   };
 
   const handleChatSend = async () => {
-    const question = chatInput.trim();
-    if (!question) return;
-    const documentContext = buildDocumentContext();
-    if (!documentContext) {
-      setChatError("Document context is not available yet.");
-      return;
-    }
-    setChatError("");
-    setChatLoading(true);
+    if (!chatInput.trim()) return;
+    const userMessage = chatInput.trim();
     setChatInput("");
-    setChatMessages((prev) => [...prev, { role: "user", content: question }]);
+    setChatMessages((prev) => [...prev, { role: "user", content: userMessage }]);
+    setChatLoading(true);
+    setChatError("");
     try {
+      const context = buildDocumentContext();
       const response = await fetch("http://localhost:8000/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          question,
-          document_context: documentContext,
+          question: userMessage,
+          document_context: context,
         }),
       });
       if (!response.ok) {
@@ -526,346 +552,391 @@ export default function DocumentPage({
   }, [isCapturing]);
 
   const summaryDraftConfig = getDraftConfig(translatedSummary || summary);
-
   return (
-    <div className="h-screen bg-white grid grid-cols-1 lg:grid-cols-3 overflow-hidden">
-      {isCapturing ? (
-        <div
-          className="fixed inset-0 z-50 cursor-crosshair"
-          onMouseDown={handleCaptureMouseDown}
-          onMouseMove={handleCaptureMouseMove}
-          onMouseUp={handleCaptureMouseUp}
-        >
-          <div className="absolute inset-0 bg-black/20" />
-          {captureRect ? (
-            <div
-              className="absolute border-2 border-blue-400 bg-blue-200/20"
-              style={{
-                left: captureRect.x,
-                top: captureRect.y,
-                width: captureRect.width,
-                height: captureRect.height,
-              }}
+  <div className="h-screen bg-white grid grid-cols-1 lg:grid-cols-3 overflow-hidden">
+    {isCapturing && (
+      <div
+        className="fixed inset-0 z-50 cursor-crosshair"
+        onMouseDown={handleCaptureMouseDown}
+        onMouseMove={handleCaptureMouseMove}
+        onMouseUp={handleCaptureMouseUp}
+      >
+        <div className="absolute inset-0 bg-black/20" />
+        {captureRect && (
+          <div
+            className="absolute border-2 border-blue-400 bg-blue-200/20"
+            style={{
+              left: captureRect.x,
+              top: captureRect.y,
+              width: captureRect.width,
+              height: captureRect.height,
+            }}
+          />
+        )}
+        <div className="absolute top-4 left-1/2 -translate-x-1/2 bg-white/90 border border-slate-200 rounded-md px-3 py-2 text-sm text-slate-700 shadow">
+          Drag to select an area. Press Esc to cancel.
+        </div>
+      </div>
+    )}
+
+    <video ref={captureVideoRef} className="hidden" />
+
+    {/* Left: viewer */}
+    <section className="lg:col-span-2 bg-black">
+      <div className="h-full bg-white overflow-auto">
+        {fileURL ? (
+          <iframe src={fileURL} className="w-full h-full" title="Uploaded Document" />
+        ) : (
+          <div className="p-10">
+            <h2 className="text-2xl font-semibold mb-6">This would be the pdf</h2>
+            <p className="text-slate-500">No document uploaded.</p>
+          </div>
+        )}
+      </div>
+    </section>
+
+    {/* Right: explanation */}
+    <aside className="h-full bg-white p-8 shadow-md flex flex-col overflow-hidden">
+      {isProcessing ? (
+        <div className="flex-1 flex flex-col items-center justify-center text-center">
+          <svg
+            className="animate-spin h-12 w-12 text-blue-500 mb-4"
+            xmlns="http://www.w3.org/2000/svg"
+            fill="none"
+            viewBox="0 0 24 24"
+          >
+            <circle
+              className="opacity-25"
+              cx="12"
+              cy="12"
+              r="10"
+              stroke="currentColor"
+              strokeWidth="4"
             />
-          ) : null}
-          <div className="absolute top-4 left-1/2 -translate-x-1/2 bg-white/90 border border-slate-200 rounded-md px-3 py-2 text-sm text-slate-700 shadow">
-            Drag to select an area. Press Esc to cancel.
-          </div>
+            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
+          </svg>
+          <h3 className="text-lg font-semibold text-slate-700">
+            Analyzing your document…
+          </h3>
+          <p className="text-sm text-slate-500 mt-1">This may take a few moments</p>
         </div>
-      ) : null}
-      <video ref={captureVideoRef} className="hidden" />
-      {/* Left: viewer */}
-      <section className="lg:col-span-2 bg-black">
-        <div className="h-full bg-white overflow-auto">
-          {fileURL ? (
-            <iframe src={fileURL} className="w-full h-full" title="Uploaded Document" />
-          ) : (
-            <div className="p-10">
-              <h2 className="text-2xl font-semibold mb-6">This would be the pdf</h2>
-              <p className="text-slate-500">No document uploaded.</p>
+      ) : (
+        <div className="flex-1 flex flex-col overflow-hidden">
+          {/* Scrollable content */}
+          <div className="flex-1 overflow-auto">
+            <div className="flex items-start justify-between">
+              <h3 className="text-xl font-bold">Document Summary</h3>
+              <button onClick={onBack} className="text-sm text-slate-500 hover:underline">
+                Back
+              </button>
             </div>
-          )}
-        </div>
-      </section>
 
-      {/* Right: explanation */}
-      <aside className="h-full bg-white p-8 shadow-md flex flex-col overflow-hidden">
-        {/* Scrollable content */}
-        <div className="flex-1 overflow-auto">
-          <div className="flex items-start justify-between">
-            <h3 className="text-xl font-bold">Simplified Explanation</h3>
-            <button onClick={onBack} className="text-sm text-slate-500 hover:underline">
-              Back
-            </button>
-          </div>
-
-          <div className="mt-4 text-slate-700 text-base">
-            <blockquote className="border-l-4 border-slate-200 pl-4 italic">
-              {translating ? "Translating..." : (translatedSummary || summary)}
-            </blockquote>
-          </div>
-          <div className="mt-4 flex flex-wrap items-center gap-2">
-            <button
-              onClick={generateSummaryDraft}
-              disabled={summaryDraftLoading}
-              className="px-3 py-1.5 text-sm rounded-md bg-white border border-slate-200 text-slate-700 disabled:opacity-50"
-            >
-              {summaryDraftLoading ? "Drafting..." : summaryDraftConfig.label}
-            </button>
-          </div>
-          {summaryDraftError ? (
-            <div className="mt-2 text-sm text-red-600">{summaryDraftError}</div>
-          ) : null}
-          {summaryDraft ? (
-            <div className="mt-3 text-slate-700 text-base">
-              <div className="text-sm font-semibold text-slate-700 mb-1">Draft</div>
-              <blockquote className="border-l-4 border-slate-200 pl-4 italic whitespace-pre-wrap">
-                {summaryDraft}
+            <div className="mt-4 text-slate-700 text-base">
+              <blockquote className="border-l-4 border-slate-200 pl-4 italic">
+                {translating ? "Translating..." : translatedSummary || summary}
               </blockquote>
             </div>
-          ) : null}
 
-          <div className="mt-8">
-            <h4 className="text-lg font-semibold mb-3">Steps to Take</h4>
-            <ul className="list-disc list-inside space-y-2 text-slate-800">
-              {(translatedFields || formFields).map((field) => (
-                <li key={field.id}>{field.label}</li>
-              ))}
-            </ul>
-          </div>
-
-          {importantInfo ? (
-            <div className="mt-8">
+            <div className="mt-4 flex flex-wrap items-center gap-2">
               <button
-                onClick={() => setShowImportantInfo((prev) => !prev)}
-                className="w-full flex items-center justify-between text-left text-lg font-semibold text-slate-900"
-                aria-expanded={showImportantInfo}
-              >
-                <span>Important Info</span>
-                <span className="text-sm text-slate-500">
-                  {showImportantInfo ? "Hide" : "Show"}
-                </span>
-              </button>
-              {showImportantInfo ? (
-                <div className="mt-3">
-                  {importantInfo.deadlines?.length ? (
-                    <div className="mb-3">
-                      <div className="text-sm font-semibold text-slate-700 mb-1">Deadlines</div>
-                      <ul className="list-disc list-inside space-y-1 text-slate-800">
-                        {importantInfo.deadlines.map((item, idx) => (
-                          <li key={`deadline-${idx}`}>{item}</li>
-                        ))}
-                      </ul>
-                    </div>
-                  ) : null}
-                  {importantInfo.notices?.length ? (
-                    <div className="mb-3">
-                      <div className="text-sm font-semibold text-slate-700 mb-1">Notices</div>
-                      <ul className="list-disc list-inside space-y-1 text-slate-800">
-                        {importantInfo.notices.map((item, idx) => (
-                          <li key={`notice-${idx}`}>{item}</li>
-                        ))}
-                      </ul>
-                    </div>
-                  ) : null}
-                  {importantInfo.rules?.length ? (
-                    <div className="mb-3">
-                      <div className="text-sm font-semibold text-slate-700 mb-1">Rules</div>
-                      <ul className="list-disc list-inside space-y-1 text-slate-800">
-                        {importantInfo.rules.map((item, idx) => (
-                          <li key={`rule-${idx}`}>{item}</li>
-                        ))}
-                      </ul>
-                    </div>
-                  ) : null}
-                  {importantInfo.other?.length ? (
-                    <div>
-                      <div className="text-sm font-semibold text-slate-700 mb-1">Other</div>
-                      <ul className="list-disc list-inside space-y-1 text-slate-800">
-                        {importantInfo.other.map((item, idx) => (
-                          <li key={`other-${idx}`}>{item}</li>
-                        ))}
-                      </ul>
-                    </div>
-                  ) : null}
-                </div>
-              ) : null}
-            </div>
-          ) : null}
-
-          <div className="mt-8">
-            <h4 className="text-lg font-semibold mb-2">Explain a Selection</h4>
-            <p className="text-sm text-slate-500 mb-3">
-              Click Select Text, then drag a rectangle over the PDF.
-            </p>
-            <div className="flex items-center gap-2">
-              <button
-                onClick={startScreenCapture}
-                disabled={!fileURL || isCapturing || selectionLoading}
-                className="px-3 py-1.5 text-sm rounded-md bg-slate-900 text-white disabled:opacity-50"
-              >
-                {isCapturing ? "Selecting..." : "Select Text"}
-              </button>
-              <button
-                onClick={stopScreenCapture}
-                disabled={!isCapturing}
+                onClick={generateSummaryDraft}
+                disabled={summaryDraftLoading}
                 className="px-3 py-1.5 text-sm rounded-md bg-white border border-slate-200 text-slate-700 disabled:opacity-50"
               >
-                Cancel
+                {summaryDraftLoading ? "Drafting..." : summaryDraftConfig.label}
               </button>
             </div>
 
-            <div className="mt-3 flex flex-wrap items-center gap-2">
-              <select
-                value={selectionLang}
-                onChange={(e) => handleSelectionTranslate(e.target.value)}
-                className="border border-slate-200 rounded-md px-2 py-1 text-sm bg-white"
-                aria-label="Selection language"
-                disabled={!selectionExplanation}
-              >
-                {LANGUAGES.map((lang) => (
-                  <option key={lang.code} value={lang.code}>
-                    {lang.label}
-                  </option>
-                ))}
-              </select>
-              <button
-                onClick={() =>
-                  playTTSForText(
-                    selectionTranslated || selectionExplanation,
-                    1,
-                  )
-                }
-                disabled={!selectionExplanation}
-                className="px-3 py-1.5 text-sm rounded-md bg-slate-100 text-slate-700 disabled:opacity-50"
-              >
-                Speak
-              </button>
-              <button
-                onClick={generateSelectionActions}
-                disabled={!selectionExplanation || selectionActionsLoading}
-                className="px-3 py-1.5 text-sm rounded-md bg-white border border-slate-200 text-slate-700 disabled:opacity-50"
-              >
-                {selectionActionsLoading ? "Loading..." : "Action"}
-              </button>
-            </div>
+            {summaryDraftError && (
+              <div className="mt-2 text-sm text-red-600">{summaryDraftError}</div>
+            )}
 
-            {selectionLoading ? (
-              <div className="mt-2 text-sm text-slate-500">Explaining...</div>
-            ) : null}
-            {selectionTranslating ? (
-              <div className="mt-2 text-sm text-slate-500">Translating...</div>
-            ) : null}
-            {selectionError ? (
-              <div className="mt-2 text-sm text-red-600">{selectionError}</div>
-            ) : null}
-            {selectionExplanation ? (
+            {summaryDraft && (
               <div className="mt-3 text-slate-700 text-base">
-                <blockquote className="border-l-4 border-slate-200 pl-4 italic">
-                  {selectionTranslated || selectionExplanation}
+                <div className="text-sm font-semibold text-slate-700 mb-1">Draft</div>
+                <blockquote className="border-l-4 border-slate-200 pl-4 italic whitespace-pre-wrap">
+                  {summaryDraft}
                 </blockquote>
               </div>
-            ) : null}
-            {selectionActionsError ? (
-              <div className="mt-2 text-sm text-red-600">{selectionActionsError}</div>
-            ) : null}
-            {selectionActions.length ? (
-              <div className="mt-3">
-                <div className="text-sm font-semibold text-slate-700 mb-1">Actions</div>
-                <ul className="list-disc list-inside space-y-1 text-sm text-slate-700">
-                  {selectionActions.map((step, idx) => (
-                    <li key={`${step}-${idx}`}>{step}</li>
+            )}
+
+            <div className="mt-8">
+              <h4 className="text-lg font-semibold mb-3">Steps to Take</h4>
+              <ul className="list-disc list-inside space-y-2 text-slate-800">
+                {(translatedFields || formFields).map((field) => (
+                  <li key={field.id}>{field.label}</li>
+                ))}
+              </ul>
+            </div>
+
+            {(translatedImportantInfo || importantInfo) && (
+              <div className="mt-8">
+                <button
+                  onClick={() => setShowImportantInfo((prev) => !prev)}
+                  className="w-full flex items-center justify-between text-left text-lg font-semibold text-slate-900"
+                  aria-expanded={showImportantInfo}
+                >
+                  <span>Expanded Info</span>
+                  <span className="text-sm text-slate-500">
+                    {showImportantInfo ? "Hide" : "Show"}
+                  </span>
+                </button>
+
+                {showImportantInfo && (
+                  <div className="mt-3">
+                    {((translatedImportantInfo?.deadlines ?? importantInfo?.deadlines) || []).length > 0 && (
+                      <div className="mb-3">
+                        <div className="text-sm font-semibold text-slate-700 mb-1">
+                          Deadlines
+                        </div>
+                        <ul className="list-disc list-inside space-y-1 text-slate-800">
+                          {(translatedImportantInfo?.deadlines ?? importantInfo?.deadlines ?? []).map((item, idx) => (
+                            <li key={`deadline-${idx}`}>{item}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                    {((translatedImportantInfo?.notices ?? importantInfo?.notices) || []).length > 0 && (
+                      <div className="mb-3">
+                        <div className="text-sm font-semibold text-slate-700 mb-1">
+                          Notices
+                        </div>
+                        <ul className="list-disc list-inside space-y-1 text-slate-800">
+                          {(translatedImportantInfo?.notices ?? importantInfo?.notices ?? []).map((item, idx) => (
+                            <li key={`notice-${idx}`}>{item}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                    {((translatedImportantInfo?.rules ?? importantInfo?.rules) || []).length > 0 && (
+                      <div className="mb-3">
+                        <div className="text-sm font-semibold text-slate-700 mb-1">Rules</div>
+                        <ul className="list-disc list-inside space-y-1 text-slate-800">
+                          {(translatedImportantInfo?.rules ?? importantInfo?.rules ?? []).map((item, idx) => (
+                            <li key={`rule-${idx}`}>{item}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                    {((translatedImportantInfo?.other ?? importantInfo?.other) || []).length > 0 && (
+                      <div>
+                        <div className="text-sm font-semibold text-slate-700 mb-1">Other</div>
+                        <ul className="list-disc list-inside space-y-1 text-slate-800">
+                          {(translatedImportantInfo?.other ?? importantInfo?.other ?? []).map((item, idx) => (
+                            <li key={`other-${idx}`}>{item}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Explain Selection */}
+            <div className="mt-8">
+              <h4 className="text-lg font-semibold mb-2">Explain a Selection</h4>
+              <p className="text-sm text-slate-500 mb-3">
+                Click Select Text, then drag a rectangle over the PDF.
+              </p>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={startScreenCapture}
+                  disabled={!fileURL || isCapturing || selectionLoading}
+                  className="px-3 py-1.5 text-sm rounded-md bg-slate-900 text-white disabled:opacity-50"
+                >
+                  {isCapturing ? "Selecting..." : "Select Text"}
+                </button>
+                <button
+                  onClick={stopScreenCapture}
+                  disabled={!isCapturing}
+                  className="px-3 py-1.5 text-sm rounded-md bg-white border border-slate-200 text-slate-700 disabled:opacity-50"
+                >
+                  Cancel
+                </button>
+              </div>
+
+              <div className="mt-3 flex flex-wrap items-center gap-2">
+                <select
+                  value={selectionLang}
+                  onChange={(e) => handleSelectionTranslate(e.target.value)}
+                  className="border border-slate-200 rounded-md px-2 py-1 text-sm bg-white"
+                  aria-label="Selection language"
+                  disabled={!selectionExplanation}
+                >
+                  {LANGUAGES.map((lang) => (
+                    <option key={lang.code} value={lang.code}>
+                      {lang.label}
+                    </option>
+                  ))}
+                </select>
+                <button
+                  onClick={() =>
+                    playTTSForText(selectionTranslated || selectionExplanation, 1)
+                  }
+                  disabled={!selectionExplanation}
+                  className="px-3 py-1.5 text-sm rounded-md bg-slate-100 text-slate-700 disabled:opacity-50"
+                >
+                  Speak
+                </button>
+                <button
+                  onClick={generateSelectionActions}
+                  disabled={!selectionExplanation || selectionActionsLoading}
+                  className="px-3 py-1.5 text-sm rounded-md bg-white border border-slate-200 text-slate-700 disabled:opacity-50"
+                >
+                  {selectionActionsLoading ? "Loading..." : "Action"}
+                </button>
+              </div>
+
+              {selectionLoading && (
+                <div className="mt-2 text-sm text-slate-500">Explaining...</div>
+              )}
+              {selectionTranslating && (
+                <div className="mt-2 text-sm text-slate-500">Translating...</div>
+              )}
+              {selectionError && (
+                <div className="mt-2 text-sm text-red-600">{selectionError}</div>
+              )}
+              {selectionExplanation && (
+                <div className="mt-3 text-slate-700 text-base">
+                  <blockquote className="border-l-4 border-slate-200 pl-4 italic">
+                    {selectionTranslated || selectionExplanation}
+                  </blockquote>
+                </div>
+              )}
+              {selectionActionsError && (
+                <div className="mt-2 text-sm text-red-600">{selectionActionsError}</div>
+              )}
+              {selectionActions.length > 0 && (
+                <div className="mt-3">
+                  <div className="text-sm font-semibold text-slate-700 mb-1">Actions</div>
+                  <ul className="list-disc list-inside space-y-1 text-sm text-slate-700">
+                    {selectionActions.map((step, idx) => (
+                      <li key={`${step}-${idx}`}>{step}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </div>
+
+            {/* Ask an Expert */}
+            <div className="mt-10">
+              <h4 className="text-lg font-semibold mb-2">Ask an Expert</h4>
+              <p className="text-sm text-slate-500 mb-3">
+                Ask questions about the document and get an expert response.
+              </p>
+              <div className="border border-slate-200 rounded-md bg-white">
+                <div className="max-h-48 overflow-auto p-3 space-y-3">
+                  {chatMessages.length === 0 && (
+                    <div className="text-sm text-slate-500">
+                      No messages yet. Ask a question below.
+                    </div>
+                  )}
+                  {chatMessages.map((msg, idx) => (
+                    <div
+                      key={`${msg.role}-${idx}`}
+                      className={
+                        msg.role === "user"
+                          ? "text-sm text-slate-900 text-right"
+                          : "text-sm text-slate-700 text-left"
+                      }
+                    >
+                      <div
+                        className={
+                          msg.role === "user"
+                            ? "inline-block bg-slate-100 px-3 py-2 rounded-lg"
+                            : "inline-block bg-blue-50 px-3 py-2 rounded-lg"
+                        }
+                      >
+                        {msg.content}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                <div className="border-t border-slate-200 p-3 flex gap-2">
+                  <input
+                    value={chatInput}
+                    onChange={(e) => setChatInput(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" && !e.shiftKey) {
+                        e.preventDefault();
+                        handleChatSend();
+                      }
+                    }}
+                    placeholder="Ask a question..."
+                    className="flex-1 border border-slate-200 rounded-md px-3 py-2 text-sm"
+                  />
+                  <button
+                    onClick={handleChatSend}
+                    disabled={chatLoading || !chatInput.trim()}
+                    className="px-3 py-2 text-sm rounded-md bg-slate-900 text-white disabled:opacity-50"
+                  >
+                    {chatLoading ? "Sending..." : "Send"}
+                  </button>
+                </div>
+                {chatError && (
+                  <div className="mt-2 text-sm text-red-600">{chatError}</div>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* Bottom buttons */}
+          <div className="mt-6 flex gap-3 relative">
+            <button
+              className="w-16 h-16 text-3xl bg-slate-100 rounded-md grid place-items-center"
+              onClick={handleAudioButton}
+              aria-label={audioPlaying ? "Pause audio" : "Play audio"}
+            >
+              {audioPlaying ? "⏹" : "🔊"}
+            </button>
+            <button
+              className="w-16 h-16 text-xl bg-slate-100 rounded-md grid place-items-center"
+              onClick={() => setShowLangDropdown((prev) => !prev)}
+            >
+              🌐
+            </button>
+
+            {showAudioDropdown && (
+              <div className="absolute bottom-20 left-0 bg-white border border-slate-200 rounded-md shadow-lg p-3 w-40 z-10">
+                <div className="font-semibold mb-2 text-sm text-slate-700">Audio Speed</div>
+                <ul className="space-y-1">
+                  {AUDIO_SPEEDS.map((opt) => (
+                    <li key={opt.value}>
+                      <button
+                        className="w-full text-left px-2 py-1 hover:bg-slate-100 rounded"
+                        onClick={() => handleAudioSpeed(opt.value)}
+                      >
+                        {opt.label}
+                      </button>
+                    </li>
                   ))}
                 </ul>
               </div>
-            ) : null}
-          </div>
+            )}
 
-          <div className="mt-10">
-            <h4 className="text-lg font-semibold mb-2">Ask an Expert</h4>
-            <p className="text-sm text-slate-500 mb-3">
-              Ask questions about the document and get an expert response.
-            </p>
-            <div className="border border-slate-200 rounded-md bg-white">
-              <div className="max-h-48 overflow-auto p-3 space-y-3">
-                {chatMessages.length === 0 ? (
-                  <div className="text-sm text-slate-500">
-                    No messages yet. Ask a question below.
-                  </div>
-                ) : null}
-                {chatMessages.map((msg, idx) => (
-                  <div
-                    key={`${msg.role}-${idx}`}
-                    className={
-                      msg.role === "user"
-                        ? "text-sm text-slate-900 text-right"
-                        : "text-sm text-slate-700 text-left"
-                    }
-                  >
-                    <div
-                      className={
-                        msg.role === "user"
-                          ? "inline-block bg-slate-100 px-3 py-2 rounded-lg"
-                          : "inline-block bg-blue-50 px-3 py-2 rounded-lg"
-                      }
-                    >
-                      {msg.content}
-                    </div>
-                  </div>
-                ))}
+            {showLangDropdown && (
+              <div className="absolute bottom-20 bg-white border border-slate-200 rounded-md shadow-lg p-3 w-40 z-10">
+                <div className="font-semibold mb-2 text-sm text-slate-700">Language</div>
+                <ul className="space-y-1">
+                  {LANGUAGES.map((lang) => (
+                    <li key={lang.code}>
+                      <button
+                        className="w-full text-left px-2 py-1 hover:bg-slate-100 rounded"
+                        onClick={() => handleTranslate(lang.code)}
+                      >
+                        {lang.label}
+                      </button>
+                    </li>
+                  ))}
+                </ul>
               </div>
-              <div className="border-t border-slate-200 p-3 flex gap-2">
-                <input
-                  value={chatInput}
-                  onChange={(e) => setChatInput(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" && !e.shiftKey) {
-                      e.preventDefault();
-                      handleChatSend();
-                    }
-                  }}
-                  placeholder="Ask a question..."
-                  className="flex-1 border border-slate-200 rounded-md px-3 py-2 text-sm"
-                />
-                <button
-                  onClick={handleChatSend}
-                  disabled={chatLoading || !chatInput.trim()}
-                  className="px-3 py-2 text-sm rounded-md bg-slate-900 text-white disabled:opacity-50"
-                >
-                  {chatLoading ? "Sending..." : "Send"}
-                </button>
-              </div>
-            </div>
-            {chatError ? (
-              <div className="mt-2 text-sm text-red-600">{chatError}</div>
-            ) : null}
+            )}
           </div>
-
         </div>
+      )}
+    </aside>
+  </div>
+);
 
-        {/* Bottom buttons */}
-        <div className="mt-6 flex gap-3 relative">
-          <button
-            className="w-16 h-16 text-3xl bg-slate-100 rounded-md grid place-items-center"
-            onClick={handleAudioButton}
-            id="audio-btn"
-            aria-label={audioPlaying ? "Pause audio" : "Play audio"}
-          >
-            {audioPlaying ? "⏹" : "🔊"}
-          </button>
-          <button className="w-16 h-16 text-xl bg-slate-100 rounded-md grid place-items-center" onClick={() => setShowLangDropdown((prev) => !prev)}>
-            🌐
-          </button>
-          {showAudioDropdown && (
-            <div className="absolute bottom-20 left-0 bg-white border border-slate-200 rounded-md shadow-lg p-3 w-40 z-10">
-              <div className="font-semibold mb-2 text-sm text-slate-700">Audio Speed</div>
-              <ul className="space-y-1">
-                {AUDIO_SPEEDS.map((opt) => (
-                  <li key={opt.value}>
-                    <button className="w-full text-left px-2 py-1 hover:bg-slate-100 rounded" onClick={() => handleAudioSpeed(opt.value)}>
-                      {opt.label}
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
-          {showLangDropdown && (
-            <div className="absolute bottom-20 bg-white border border-slate-200 rounded-md shadow-lg p-3 w-40 z-10">
-              <div className="font-semibold mb-2 text-sm text-slate-700">Language</div>
-              <ul className="space-y-1">
-                {LANGUAGES.map((lang) => (
-                  <li key={lang.code}>
-                    <button className="w-full text-left px-2 py-1 hover:bg-slate-100 rounded" onClick={() => handleTranslate(lang.code)}>
-                      {lang.label}
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
-        </div>
-      </aside>
-    </div>
-  );
 }
