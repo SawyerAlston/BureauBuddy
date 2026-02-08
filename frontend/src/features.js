@@ -9,7 +9,7 @@ export const features = [
   {
     icon: FaFileAlt,
     title: 'Information Parsing',
-    description: 'Automatically extract and highlight the most important information you need.'
+    description: 'Automatically extract and lay out the most important information you need.'
   },
   {
     icon: FaLanguage,
@@ -23,7 +23,7 @@ export const features = [
   },
   {
     icon: FaHighlighter,
-    title: 'Highlight & Explain',
-    description: 'Highlight any text to get further explanations and clarifications.'
+    title: 'Select & Explain',
+    description: 'Plug in any text to get further explanations and clarifications.'
   }
 ];

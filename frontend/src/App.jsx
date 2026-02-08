@@ -11,6 +11,9 @@ export default function App() {
   const [isProcessing, setIsProcessing] = useState(false);
   const [view, setView] = useState('home'); // 'home' | 'viewer' 
 
+  const featureCount = features.length;
+  const featureRemainder = featureCount % 3;
+
   const fileInputRef = useRef(null);
 
   const processDocument = async (file) => {
@@ -184,20 +187,31 @@ export default function App() {
       {/* Features Section */}
       <section className="py-20 px-4 bg-gradient-to-br from-indigo-50 to-blue-100">
         <h2 className="text-4xl font-extrabold text-center text-slate-900 mb-12">Features</h2>
-        <div className="max-w-6xl mx-auto grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-10">
-          {features.map(({ icon: Icon, title, description }, idx) => (
-            <div
-              key={title}
-              className="bg-white rounded-2xl shadow-lg p-8 flex flex-col items-center text-center hover:scale-105 transition-transform duration-300 animate-bounce-in"
-              style={{ animationDelay: `${idx * 0.1}s` }}
-            >
+        <div className="max-w-6xl mx-auto grid grid-cols-1 sm:grid-cols-2 md:grid-cols-6 gap-10">
+          {features.map(({ icon: Icon, title, description }, idx) => {
+            const isCenteredPairStart = featureRemainder === 2 && idx === featureCount - 2;
+            const isCenteredSingle = featureRemainder === 1 && idx === featureCount - 1;
+
+            return (
+              <div
+                key={title}
+                className={`md:col-span-2 bg-white rounded-2xl shadow-lg p-8 flex flex-col items-center text-center hover:scale-105 transition-transform duration-300 animate-bounce-in ${
+                  isCenteredPairStart
+                    ? "md:col-start-2"
+                    : isCenteredSingle
+                    ? "md:col-start-3"
+                    : ""
+                }`}
+                style={{ animationDelay: `${idx * 0.1}s` }}
+              >
               <span className="mb-4 text-indigo-500">
                 <Icon size={56} />
               </span>
               <h3 className="text-2xl font-bold mb-2">{title}</h3>
               <p className="text-slate-600 text-lg">{description}</p>
-            </div>
-          ))}
+              </div>
+            );
+          })}
         </div>
       </section>
     </div>
