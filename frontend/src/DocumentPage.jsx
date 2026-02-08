@@ -163,7 +163,8 @@ export default function DocumentPage({ fileURL, summary, formFields = [], onBack
         body: JSON.stringify({ text: selectionExplanation, target_language: langCode }),
       });
       const data = await res.json();
-      setSelectionTranslated(data.translated_text || selectionExplanation);
+      const translated = data.translated_text || selectionExplanation;
+      setSelectionTranslated(translated);
     } catch (err) {
       console.error(err);
       setSelectionTranslated("Translation failed.");
@@ -186,6 +187,7 @@ export default function DocumentPage({ fileURL, summary, formFields = [], onBack
   const startScreenCapture = async () => {
     setSelectionError("");
     setSelectionExplanation("");
+    setSelectionTranslated("");
     try {
       const stream = await navigator.mediaDevices.getDisplayMedia({ video: true });
       const video = captureVideoRef.current;
