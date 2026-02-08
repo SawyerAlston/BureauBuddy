@@ -1,8 +1,16 @@
 from fastapi import FastAPI
 from app.api import simplify_text, analyze_doc, pdf_ingest, tts, translate
-
+from fastapi.middleware.cors import CORSMiddleware
 
 app = FastAPI(title="TidalHACK Backend API", version="1.0")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:5173"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"]
+)
 
 app.include_router(simplify_text.router)
 app.include_router(analyze_doc.router)
