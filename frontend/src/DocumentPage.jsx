@@ -16,6 +16,9 @@ export default function DocumentPage({ fileURL, summary, formFields = [], onBack
   const [selectionLang, setSelectionLang] = useState("en");
   const [selectionTranslated, setSelectionTranslated] = useState("");
   const [selectionTranslating, setSelectionTranslating] = useState(false);
+  const [selectionActions, setSelectionActions] = useState([]);
+  const [selectionActionsLoading, setSelectionActionsLoading] = useState(false);
+  const [selectionActionsError, setSelectionActionsError] = useState("");
   const audioRef = useRef(null);
   const captureVideoRef = useRef(null);
   const captureStreamRef = useRef(null);
@@ -152,6 +155,8 @@ export default function DocumentPage({ fileURL, summary, formFields = [], onBack
     setSelectionLang(langCode);
     if (langCode === "en") {
       setSelectionTranslated("");
+      setSelectionActions([]);
+      setSelectionActionsError("");
       return;
     }
     if (!selectionExplanation) return;
@@ -165,6 +170,8 @@ export default function DocumentPage({ fileURL, summary, formFields = [], onBack
       const data = await res.json();
       const translated = data.translated_text || selectionExplanation;
       setSelectionTranslated(translated);
+      setSelectionActions([]);
+      setSelectionActionsError("");
     } catch (err) {
       console.error(err);
       setSelectionTranslated("Translation failed.");
@@ -188,6 +195,8 @@ export default function DocumentPage({ fileURL, summary, formFields = [], onBack
     setSelectionError("");
     setSelectionExplanation("");
     setSelectionTranslated("");
+    setSelectionActions([]);
+    setSelectionActionsError("");
     try {
       const stream = await navigator.mediaDevices.getDisplayMedia({ video: true });
       const video = captureVideoRef.current;
@@ -233,6 +242,8 @@ export default function DocumentPage({ fileURL, summary, formFields = [], onBack
     setSelectionError("");
     setSelectionExplanation("");
     setSelectionTranslated("");
+    setSelectionActions([]);
+    setSelectionActionsError("");
     try {
       const response = await fetch("http://localhost:8000/analyze_doc", {
         method: "POST",
@@ -280,6 +291,51 @@ export default function DocumentPage({ fileURL, summary, formFields = [], onBack
       setSelectionError("Failed to explain the selected area.");
     } finally {
       setSelectionLoading(false);
+    }
+  };
+
+  const generateSelectionActions = async () => {
+    const baseExplanation = (selectionTranslated || selectionExplanation || "").trim();
+    if (!baseExplanation) {
+      setSelectionActionsError("No simplified text available yet.");
+      return;
+    }
+    setSelectionActionsLoading(true);
+    setSelectionActionsError("");
+    setSelectionActions([]);
+    try {
+      const response = await fetch("http://localhost:8000/next_steps", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ form_context: baseExplanation }),
+      });
+      if (!response.ok) {
+        const errText = await response.text();
+        throw new Error(errText);
+      }
+      const data = await response.json();
+      let steps = Array.isArray(data.steps) ? data.steps : [];
+      if (selectionLang !== "en" && steps.length) {
+        const joined = steps.join("\n");
+        const translateRes = await fetch("http://localhost:8000/translate", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ text: joined, target_language: selectionLang }),
+        });
+        if (translateRes.ok) {
+          const translated = await translateRes.json();
+          steps = String(translated.translated_text || joined)
+            .split("\n")
+            .map((step) => step.trim())
+            .filter(Boolean);
+        }
+      }
+      setSelectionActions(steps);
+    } catch (err) {
+      console.error(err);
+      setSelectionActionsError("Failed to generate actions.");
+    } finally {
+      setSelectionActionsLoading(false);
     }
   };
 
@@ -442,6 +498,13 @@ export default function DocumentPage({ fileURL, summary, formFields = [], onBack
               >
                 Speak
               </button>
+              <button
+                onClick={generateSelectionActions}
+                disabled={!selectionExplanation || selectionActionsLoading}
+                className="px-3 py-1.5 text-sm rounded-md bg-white border border-slate-200 text-slate-700 disabled:opacity-50"
+              >
+                {selectionActionsLoading ? "Loading..." : "Action"}
+              </button>
             </div>
 
             {selectionLoading ? (
@@ -458,6 +521,19 @@ export default function DocumentPage({ fileURL, summary, formFields = [], onBack
                 <blockquote className="border-l-4 border-slate-200 pl-4 italic">
                   {selectionTranslated || selectionExplanation}
                 </blockquote>
+              </div>
+            ) : null}
+            {selectionActionsError ? (
+              <div className="mt-2 text-sm text-red-600">{selectionActionsError}</div>
+            ) : null}
+            {selectionActions.length ? (
+              <div className="mt-3">
+                <div className="text-sm font-semibold text-slate-700 mb-1">Actions</div>
+                <ul className="list-disc list-inside space-y-1 text-sm text-slate-700">
+                  {selectionActions.map((step, idx) => (
+                    <li key={`${step}-${idx}`}>{step}</li>
+                  ))}
+                </ul>
               </div>
             ) : null}
           </div>
