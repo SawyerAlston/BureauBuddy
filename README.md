@@ -1,6 +1,8 @@
 # BureauBuddy
 
-BureauBuddy is a document‑processing application for government and legal forms. It provides PDF ingestion, structured analysis, translation, text‑to‑speech synthesis, and actionable next‑step guidance through a FastAPI backend and React frontend.
+*A TidalHACK '26 Creation*
+
+**BureauBuddy** is a document‑processing application for government and legal forms. It provides PDF ingestion, structured analysis, translation, text‑to‑speech synthesis, and actionable next‑step guidance through a FastAPI backend and React frontend.
 
 ## Features
 
