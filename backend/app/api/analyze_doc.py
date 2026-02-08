@@ -85,7 +85,22 @@ def analyze_document(
     if not getattr(response, "text", None):
         raise ValueError("Empty response from Gemini")
 
-    parsed = _safe_json_parse(response.text)
+    # Remove control characters except for newlines and tabs from Gemini response
+    import re
+    cleaned_response_text = re.sub(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]", "", response.text)
+
+    # Attempt to repair common JSON issues (missing commas, trailing commas, unescaped quotes)
+    def repair_json(text):
+        # Remove trailing commas before } or ]
+        text = re.sub(r',([ \t\r\n]*[}\]])', r'\1', text)
+        # Add missing commas between string fields (very basic, not perfect)
+        text = re.sub(r'("[^"]+":\s*"[^"]+")\s*("[^"]+":)', r'\1, \2', text)
+        # Escape unescaped inner quotes in values
+        text = re.sub(r':\s*"([^"]*?)(?<!\\)"([^"]*?)"', lambda m: ': "' + m.group(1).replace('"', '\\"') + '"' + m.group(2) + '"', text)
+        return text
+
+    repaired_response_text = repair_json(cleaned_response_text)
+    parsed = _safe_json_parse(repaired_response_text)
     result = DocumentAnalysis.from_dict(parsed)
 
     if not result.transcribed_text and content_text is not None:

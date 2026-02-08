@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useRef } from "react";
 
 export default function DocumentPage({ fileURL, summary, formFields = [], onBack }) {
   const [showAudioDropdown, setShowAudioDropdown] = useState(false);
@@ -6,6 +6,8 @@ export default function DocumentPage({ fileURL, summary, formFields = [], onBack
   const [translating, setTranslating] = useState(false);
   const [translatedSummary, setTranslatedSummary] = useState(null);
   const [translatedFields, setTranslatedFields] = useState(null);
+  const [audioPlaying, setAudioPlaying] = useState(false);
+  const audioRef = useRef(null);
 
   const LANGUAGES = [
     { code: "es", label: "Spanish" },
@@ -20,9 +22,78 @@ export default function DocumentPage({ fileURL, summary, formFields = [], onBack
      { code: "en", label: "English" },
   ];
 
+  const AUDIO_SPEEDS = [
+    { label: '0.5x', value: 0.5 },
+    { label: '0.75x', value: 0.75 },
+    { label: '1x (Normal)', value: 1 },
+    { label: '1.5x', value: 1.5 },
+    { label: '2x', value: 2 },
+  ];
+
+  const playTTS = async (speed) => {
+    const text = translatedSummary ?? summary;
+    if (!text) return;
+
+    try {
+      const response = await fetch("http://localhost:8000/tts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          text,
+          model_id: "eleven_multilingual_v2",
+          output_format: "mp3_44100_128",
+        }),
+      });
+
+      if (!response.ok) {
+        const errText = await response.text();
+        console.error("TTS backend error:", errText);
+        throw new Error(errText);
+      }
+
+      const audioBlob = await response.blob();
+      const audioUrl = URL.createObjectURL(audioBlob);
+      const audio = new window.Audio(audioUrl);
+      audio.playbackRate = speed;
+      audioRef.current = audio;
+      setAudioPlaying(true);
+      audio.play();
+      audio.onended = () => {
+        setAudioPlaying(false);
+        audioRef.current = null;
+      };
+    } catch (err) {
+      console.error(err);
+      alert("Text-to-speech failed. Check backend logs.");
+      setAudioPlaying(false);
+      audioRef.current = null;
+    }
+  };
+
+
+
   const handleAudioSpeed = (speed) => {
-    // Implement audio speed change logic here
     setShowAudioDropdown(false);
+    // If audio is playing, stop it first
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current.currentTime = 0;
+      setAudioPlaying(false);
+      audioRef.current = null;
+    }
+    playTTS(speed);
+  };
+
+  // Play/Pause button handler
+  const handleAudioButton = () => {
+    if (audioPlaying && audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current.currentTime = 0;
+      setAudioPlaying(false);
+      audioRef.current = null;
+    } else {
+      setShowAudioDropdown((prev) => !prev);
+    }
   };
 
   const handleTranslate = async (langCode) => {
@@ -109,10 +180,11 @@ export default function DocumentPage({ fileURL, summary, formFields = [], onBack
         <div className="mt-6 flex gap-3 relative">
           <button
             className="w-16 h-16 text-3xl bg-slate-100 rounded-md grid place-items-center"
-            onClick={() => setShowAudioDropdown((prev) => !prev)}
+            onClick={handleAudioButton}
             id="audio-btn"
+            aria-label={audioPlaying ? "Pause audio" : "Play audio"}
           >
-            🔊
+            {audioPlaying ? "⏹" : "🔊"}
           </button>
           <button className="w-16 h-16 text-xl bg-slate-100 rounded-md grid place-items-center" onClick={() => setShowLangDropdown((prev) => !prev)}>
             🌐
@@ -121,26 +193,13 @@ export default function DocumentPage({ fileURL, summary, formFields = [], onBack
             <div className="absolute bottom-20 left-0 bg-white border border-slate-200 rounded-md shadow-lg p-3 w-40 z-10">
               <div className="font-semibold mb-2 text-sm text-slate-700">Audio Speed</div>
               <ul className="space-y-1">
-                <li>
-                  <button className="w-full text-left px-2 py-1 hover:bg-slate-100 rounded" onClick={() => handleAudioSpeed(0.5)}>
-                    0.5x
-                  </button>
-                </li>
-                <li>
-                  <button className="w-full text-left px-2 py-1 hover:bg-slate-100 rounded" onClick={() => handleAudioSpeed(1)}>
-                    1x (Normal)
-                  </button>
-                </li>
-                <li>
-                  <button className="w-full text-left px-2 py-1 hover:bg-slate-100 rounded" onClick={() => handleAudioSpeed(1.5)}>
-                    1.5x
-                  </button>
-                </li>
-                <li>
-                  <button className="w-full text-left px-2 py-1 hover:bg-slate-100 rounded" onClick={() => handleAudioSpeed(2)}>
-                    2x
-                  </button>
-                </li>
+                {AUDIO_SPEEDS.map((opt) => (
+                  <li key={opt.value}>
+                    <button className="w-full text-left px-2 py-1 hover:bg-slate-100 rounded" onClick={() => handleAudioSpeed(opt.value)}>
+                      {opt.label}
+                    </button>
+                  </li>
+                ))}
               </ul>
             </div>
           )}
