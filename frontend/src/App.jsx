@@ -136,7 +136,47 @@ export default function App() {
 
 
       {/* Description Section */}
-      <section className="flex justify-center items-center py-20 px-8">
+      <section className="flex flex-col items-center pt-12 pb-20 px-0 gap-10">
+        <div className="w-full px-8">
+          <div className="logo-marquee rounded-none sm:rounded-2xl bg-white/70 backdrop-blur border-y border-slate-200 sm:border-x py-4">
+            <div className="logo-marquee-track gap-8 px-8">
+              {[
+                { code: "es", label: "Spanish", flag: "🇪🇸" },
+                { code: "fr", label: "French", flag: "🇫🇷" },
+                { code: "de", label: "German", flag: "🇩🇪" },
+                { code: "zh", label: "Chinese", flag: "🇨🇳" },
+                { code: "hi", label: "Hindi", flag: "🇮🇳" },
+                { code: "ar", label: "Arabic", flag: "🇸🇦" },
+                { code: "ru", label: "Russian", flag: "🇷🇺" },
+                { code: "ja", label: "Japanese", flag: "🇯🇵" },
+                { code: "pt", label: "Portuguese", flag: "🇵🇹" },
+                { code: "en", label: "English", flag: "🇺🇸" },
+              ]
+                .concat([
+                  { code: "es", label: "Spanish", flag: "🇪🇸" },
+                  { code: "fr", label: "French", flag: "🇫🇷" },
+                  { code: "de", label: "German", flag: "🇩🇪" },
+                  { code: "zh", label: "Chinese", flag: "🇨🇳" },
+                  { code: "hi", label: "Hindi", flag: "🇮🇳" },
+                  { code: "ar", label: "Arabic", flag: "🇸🇦" },
+                  { code: "ru", label: "Russian", flag: "🇷🇺" },
+                  { code: "ja", label: "Japanese", flag: "🇯🇵" },
+                  { code: "pt", label: "Portuguese", flag: "🇵🇹" },
+                  { code: "en", label: "English", flag: "🇺🇸" },
+                ])
+                .map((lang, idx) => (
+                  <div
+                    key={`${lang.code}-${idx}`}
+                    className="flex items-center justify-center gap-2 min-w-[170px] h-14 rounded-xl bg-white shadow-sm border border-slate-200 text-slate-700 font-semibold tracking-wide"
+                  >
+                    <span className="text-2xl" aria-hidden="true">{lang.flag}</span>
+                    <span>{lang.label}</span>
+                  </div>
+                ))}
+            </div>
+          </div>
+        </div>
+
         <p className="max-w-3xl text-center text-xl text-slate-800 leading-relaxed">
           Need help understanding complex government forms and legal documents? We’ve got you covered! Upload your form to our agent and we will help you understand the exact process you need to complete this task!
         </p>
