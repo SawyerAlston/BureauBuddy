@@ -160,10 +160,7 @@ export default function DocumentPage({
       const res2 = await fetch("http://localhost:8000/translate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          selected_text: textInput,
-          document_context: textInput // fallback, or use summary if needed
-        }),
+        body: JSON.stringify({ text: joined, target_language: langCode })
       });
       const data2 = await res2.json();
 
@@ -347,7 +344,17 @@ export default function DocumentPage({
 
       const simplified = await simplifyResponse.json();
       const explanation = simplified.explanation || "";
-      setSelectionExplanation(explanation || "No explanation returned.");
+      // If explanation is a JSON array, parse it, otherwise use as is
+      let parsedExplanation = explanation;
+      try {
+        if (typeof explanation === 'string' && explanation.trim().startsWith('[')) {
+          parsedExplanation = JSON.parse(explanation);
+        }
+      } catch (e) {
+        // fallback to string
+        parsedExplanation = explanation;
+      }
+      setSelectionExplanation(parsedExplanation || "No explanation returned.");
     } catch (err) {
       console.error(err);
       setSelectionError("Failed to explain the selected area.");
@@ -802,9 +809,36 @@ export default function DocumentPage({
               )}
               {selectionExplanation && (
                 <div className="mt-3 text-slate-700 text-base">
-                  <blockquote className="border-l-4 border-slate-200 pl-4 italic">
-                    {selectionTranslated || selectionExplanation}
-                  </blockquote>
+                  {Array.isArray(selectionTranslated || selectionExplanation) ? (
+                    <div className="space-y-3">
+                      {(selectionTranslated || selectionExplanation).map((item, idx) => {
+                        if (typeof item === 'string') {
+                          return (
+                            <blockquote key={idx} className="border-l-4 border-slate-200 pl-4 italic">
+                              {item}
+                            </blockquote>
+                          );
+                        } else if (item && typeof item === 'object') {
+                          return (
+                            <div key={idx} className="border-l-4 border-slate-200 pl-4">
+                              {item.part && (
+                                <div className="font-semibold mb-1">{item.part}</div>
+                              )}
+                              {item.simple_explanation && (
+                                <div className="italic">{item.simple_explanation}</div>
+                              )}
+                            </div>
+                          );
+                        } else {
+                          return null;
+                        }
+                      })}
+                    </div>
+                  ) : (
+                    <blockquote className="border-l-4 border-slate-200 pl-4 italic">
+                      {selectionTranslated || selectionExplanation}
+                    </blockquote>
+                  )}
                 </div>
               )}
               {selectionActionsError && (
